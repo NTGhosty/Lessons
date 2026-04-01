@@ -1,11 +1,8 @@
-from cProfile import label
-
 import numpy as np
 import pandas as pd
 
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
-from sympy.abc import alpha
 
 # img = mpimg.imread('ttt.png')
 # plt.imshow(img)
