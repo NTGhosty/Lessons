@@ -4,9 +4,9 @@ from dotenv import load_dotenv
 # Загрузка переменных окружения
 load_dotenv()
 
-TINKOFF_TOKEN = os.getenv("TINKOFF_TOKEN", "t.z9PFXH-Gq1TwRENMkEgeU8DNw78JU2ihIsxiq7LIv7jAdjV3X_eOxCubtEcVwfa-SxO5Oc0Yp7qEUOvwyfHjnQ")
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7817891315:AAHJApadgirYo7RnR14u5OwrOpO-lj5HMjE")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "7817891315")
+TINKOFF_TOKEN = os.getenv("TINKOFF_TOKEN", "t.z9PFXH-Gq1TwRENMkEgeU8DNw78JU2ihIsxiq7LIv7gddfdjV3X_eOxCubtEcVwfa-SxO5Oc0Yp7qEUOvwyfHjnQ")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7817891315:AAHJApadgirYo7gdfg35OwrOpO-lj5HMjE")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "78152341315")
 
 FIGI_LIST = [
     "BBG004731354",  # Роснефть
