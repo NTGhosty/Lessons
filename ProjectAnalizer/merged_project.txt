@@ -1,0 +1,846 @@
+# === FILE: app.py ===
+# app.py
+"""
+import streamlit as st
+import sqlite3
+import pandas as pd
+
+st.set_page_config(page_title="Tinkoff Trading Dashboard", layout="wide")
+st.title("📊 Tinkoff Trading Dashboard")
+
+conn = sqlite3.connect('trading.db')
+
+# Сигналы
+st.subheader("Последние сигналы")
+signals = pd.read_sql("SELECT * FROM signals ORDER BY timestamp DESC LIMIT 20", conn)
+st.dataframe(signals)
+
+# Операции
+st.subheader("Последние операции")
+ops = pd.read_sql("SELECT * FROM operations ORDER BY timestamp DESC LIMIT 20", conn)
+st.dataframe(ops)
+
+# Портфель
+st.subheader("Портфель")
+portfolio = pd.read_sql("SELECT * FROM portfolio", conn)
+st.dataframe(portfolio)
+
+# Просадка
+st.subheader("История просадки")
+perf = pd.read_sql("SELECT * FROM performance ORDER BY timestamp", conn)
+if not perf.empty:
+    st.line_chart(perf.set_index('timestamp')[['drawdown']], height=300)
+    current_dd = perf['drawdown'].iloc[-1]
+    st.metric("Текущая просадка", f"{current_dd:.2%}")
+else:
+    st.info("Нет данных о просадке")
+"""
+
+# dash_app.py
+import dash
+from dash import dcc, html, Input, Output, State
+import plotly.graph_objs as go
+import plotly.io as pio
+import pandas as pd
+import asyncio
+from datetime import datetime, timedelta, timezone
+from t_tech.invest import AsyncClient
+from config import TINKOFF_TOKEN, FIGI_LIST
+
+import dash
+from dash import dcc, html, Input, Output
+import plotly.graph_objs as go
+import pandas as pd
+import asyncio
+from datetime import datetime, timedelta, timezone
+from t_tech.invest import AsyncClient, CandleInterval
+from config import TINKOFF_TOKEN, FIGI_LIST
+
+app = dash.Dash(__name__)
+app.title = "Tinkoff Market Monitor"
+
+# Сопоставление таймфреймов с интервалами Tinkoff
+TIMEFRAME_MAP = {
+    "1м": CandleInterval.CANDLE_INTERVAL_1_MIN,
+    "5м": CandleInterval.CANDLE_INTERVAL_5_MIN,
+    "30м": CandleInterval.CANDLE_INTERVAL_30_MIN,
+    "1ч": CandleInterval.CANDLE_INTERVAL_HOUR,
+    "4ч": CandleInterval.CANDLE_INTERVAL_4_HOUR,
+    "12ч": CandleInterval.CANDLE_INTERVAL_30_MIN,  # 12ч нет — используем 30м с большим периодом
+    "1д": CandleInterval.CANDLE_INTERVAL_DAY,
+    "1н": CandleInterval.CANDLE_INTERVAL_WEEK,
+    "1М": CandleInterval.CANDLE_INTERVAL_MONTH,  # если поддерживается
+}
+
+# Макс. периоды (в днях) для каждого таймфрейма
+MAX_PERIOD_DAYS = {
+    "1м": 1,
+    "5м": 7,
+    "30м": 30,
+    "1ч": 60,
+    "4ч": 180,
+    "12ч": 180,
+    "1д": 365,
+    "1н": 730,
+    "1М": 1825,
+}
+
+
+def quote_to_float(q):
+    return q.units + q.nano / 1e9
+
+
+async def fetch_candles(figi, timeframe, days):
+    interval = TIMEFRAME_MAP[timeframe]
+    async with AsyncClient(TINKOFF_TOKEN) as client:
+        moscow_tz = timezone(timedelta(hours=3))
+        now = datetime.now(moscow_tz)
+        from_time = now - timedelta(days=days)
+        candles = await client.market_data.get_candles(
+            figi=figi,
+            from_=from_time,
+            to=now,
+            interval=interval
+        )
+        data = []
+        for c in candles.candles:
+            data.append({
+                'time': c.time,
+                'close': quote_to_float(c.close),
+                'high': quote_to_float(c.high),
+                'low': quote_to_float(c.low),
+                'open': quote_to_float(c.open),
+                'volume': c.volume
+            })
+        return pd.DataFrame(data)
+
+
+async def fetch_current_price(figi):
+    async with AsyncClient(TINKOFF_TOKEN) as client:
+        moscow_tz = timezone(timedelta(hours=3))
+        now = datetime.now(moscow_tz)
+        candles = await client.market_data.get_candles(
+            figi=figi,
+            from_=now - timedelta(minutes=2),
+            to=now,
+            interval=CandleInterval.CANDLE_INTERVAL_1_MIN
+        )
+        return quote_to_float(candles.candles[-1].close) if candles.candles else None
+
+
+# === LAYOUT ===
+app.layout = html.Div(
+    style={
+        'fontFamily': '"Segoe UI", sans-serif',
+        'padding': '20px',
+        'backgroundColor': '#f9f9f9'
+    },
+    children=[
+        html.H1("📈 Tinkoff Market Monitor", style={'textAlign': 'center', 'marginBottom': '20px'}),
+
+        html.Div([
+            html.Div([
+                html.Label("Актив:", style={'fontWeight': 'bold'}),
+                dcc.Dropdown(
+                    id='figi-selector',
+                    options=[{'label': figi, 'value': figi} for figi in FIGI_LIST],
+                    value=FIGI_LIST[0] if FIGI_LIST else "",
+                    clearable=False,
+                    style={'width': '100%'}
+                )
+            ], style={'width': '45%', 'display': 'inline-block'}),
+
+            html.Div([
+                html.Label("Таймфрейм:", style={'fontWeight': 'bold'}),
+                dcc.Dropdown(
+                    id='timeframe-selector',
+                    options=[
+                        {"label": "1 минута", "value": "1м"},
+                        {"label": "5 минут", "value": "5м"},
+                        {"label": "30 минут", "value": "30м"},
+                        {"label": "1 час", "value": "1ч"},
+                        {"label": "4 часа", "value": "4ч"},
+                        {"label": "12 часов", "value": "12ч"},
+                        {"label": "1 день", "value": "1д"},
+                        {"label": "1 неделя", "value": "1н"},
+                        {"label": "1 месяц", "value": "1М"},
+                    ],
+                    value="1ч",
+                    clearable=False,
+                    style={'width': '100%'}
+                )
+            ], style={'width': '45%', 'display': 'inline-block', 'marginLeft': '5%'})
+        ], style={'marginBottom': '20px'}),
+
+        dcc.Graph(id='live-graph',
+                  style={'height': '65vh', 'borderRadius': '8px', 'boxShadow': '0 2px 8px rgba(0,0,0,0.1)'}),
+
+        html.Div(id='current-price', style={'textAlign': 'center', 'fontSize': '1.5rem', 'marginTop': '15px'}),
+
+        dcc.Interval(id='interval-component', interval=10_000, n_intervals=0)
+    ]
+)
+
+
+@app.callback(
+    [Output('live-graph', 'figure'),
+     Output('current-price', 'children')],
+    [Input('figi-selector', 'value'),
+     Input('timeframe-selector', 'value'),
+     Input('interval-component', 'n_intervals')]
+)
+def update_graph_and_price(selected_fig, timeframe, n_intervals):
+    if not selected_fig or not timeframe:
+        fig = go.Figure()
+        fig.update_layout(title="Выберите актив и таймфрейм")
+        return fig, "Ожидание выбора"
+
+    days = MAX_PERIOD_DAYS[timeframe]
+
+    loop = asyncio.new_event_loop()
+    try:
+        df = loop.run_until_complete(fetch_candles(selected_fig, timeframe, days))
+        current_price = loop.run_until_complete(fetch_current_price(selected_fig))
+    finally:
+        loop.close()
+
+    fig = go.Figure()
+
+    if not df.empty:
+        fig.add_trace(go.Candlestick(
+            x=df['time'],
+            open=df['open'],
+            high=df['high'],
+            low=df['low'],
+            close=df['close'],
+            name='Цена'
+        ))
+
+    # Текущая цена (только для краткосрочных таймфреймов)
+    if current_price and timeframe in ["1м", "5м", "30м", "1ч", "4ч", "12ч"]:
+        moscow_tz = timezone(timedelta(hours=3))
+        now = datetime.now(moscow_tz)
+        fig.add_trace(go.Scatter(
+            x=[now],
+            y=[current_price],
+            mode='markers',
+            marker=dict(color='red', size=8),
+            name='Текущая цена'
+        ))
+        price_text = f"Текущая цена: {current_price:,.0f}"
+    else:
+        price_text = "Цена недоступна"
+
+    fig.update_layout(
+        title=f"Актив: {selected_fig} | Таймфрейм: {timeframe}",
+        xaxis_title="Время",
+        yaxis_title="Цена",
+        hovermode='x unified',
+        showlegend=False,
+        margin=dict(l=50, r=30, t=50, b=50),
+        xaxis_rangeslider_visible=False,
+        dragmode='zoom',
+        uirevision=f"{selected_fig}-{timeframe}"  # сохраняет zoom при смене данных
+    )
+
+    return fig, price_text
+
+
+if __name__ == '__main__':
+    app.run(host='127.0.0.1', port=8050, debug=False)
+
+
+# === FILE: backtest.py ===
+# backtest.py
+import pandas as pd
+
+def simple_backtest(signals_df, capital=1_000_000):
+    if signals_df.empty:
+        return pd.DataFrame()
+    signals_df = signals_df.copy()
+    signals_df['return'] = signals_df['prob'] * (signals_df['tp'] - signals_df['price']) / (signals_df['price'] - signals_df['sl']) - (1 - signals_df['prob'])
+    signals_df['pnl'] = signals_df['return'] * capital * signals_df['position_size']
+    signals_df['cum_pnl'] = signals_df['pnl'].cumsum()
+    return signals_df
+
+
+# === FILE: config.py ===
+# config.py
+TINKOFF_TOKEN = "t.z9PFXH-Gq1TwRENMkEgeU8DNw78JU2ihIsxiq7LIv7jAdjV3X_eOxCubtEcVwfa-SxO5Oc0Yp7qEUOvwyfHjnQ"
+TELEGRAM_BOT_TOKEN = "7817891315:AAHJApadgirYo7RnR14u5OwrOpO-lj5HMjE"
+TELEGRAM_CHAT_ID = "7817891315"  # строка, например "123456789"
+
+FIGI_LIST = [
+    "BBG004731354",  # Роснефть
+    "BBG004730N88",  # Сбербанк
+    "BBG004S68614",  # Газпром
+    "BBG004731032",  # Лукойл
+]
+
+# Risk management
+MAX_RISK_PER_TRADE = 0.02
+MAX_RISK_PER_ASSET = 0.05
+MAX_TOTAL_PORTFOLIO_RISK = 0.10
+MAX_DRAWDOWN = 0.15
+INITIAL_CAPITAL = 1_000_000
+
+# Замените на свой account_id (получите через get_accounts)
+ACCOUNT_ID = "1855784757"
+
+# Таймфреймы для анализа (в минутах)
+TIMEFRAMES = {
+    "1m": 1,
+    "10m": 10,
+    "1h": 60,
+    "1d": 1440,
+}
+
+
+# === FILE: data_base.py ===
+# db.py
+import sqlite3
+from datetime import datetime
+
+"""
+def init_db():
+    conn = sqlite3.connect('trading.db')
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS signals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            figi TEXT,
+            price REAL,
+            signal TEXT,
+            prob REAL,
+            position_size REAL,
+            tp REAL,
+            sl REAL
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS operations (
+            id TEXT PRIMARY KEY,
+            timestamp TEXT,
+            figi TEXT,
+            operation_type TEXT,
+            price REAL,
+            quantity INTEGER,
+            status TEXT
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS portfolio (
+            figi TEXT PRIMARY KEY,
+            name TEXT,
+            quantity INTEGER,
+            avg_price REAL,
+            current_price REAL,
+            pnl REAL
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS performance (
+            timestamp TEXT,
+            balance REAL,
+            peak_balance REAL,
+            drawdown REAL
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+def save_signal(signal):
+    conn = sqlite3.connect('trading.db')
+    c = conn.cursor()
+    c.execute('''
+        INSERT INTO signals (timestamp, figi, price, signal, prob, position_size, tp, sl)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        datetime.now().isoformat(),
+        signal['figi'],
+        signal['price'],
+        signal['signal'],
+        signal['prob'],
+        signal['position_size'],
+        signal['tp'],
+        signal['sl']
+    ))
+    conn.commit()
+    conn.close()
+
+def save_operation(op):
+    conn = sqlite3.connect('trading.db')
+    c = conn.cursor()
+    c.execute('''
+        INSERT OR REPLACE INTO operations (id, timestamp, figi, operation_type, price, quantity, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        op['id'],
+        op['timestamp'],
+        op['figi'],
+        op['operation_type'],
+        op['price'],
+        op['quantity'],
+        op.get('status', 'completed')
+    ))
+    conn.commit()
+    conn.close()
+
+def update_portfolio(figi, name, quantity, avg_price, current_price):
+    conn = sqlite3.connect('trading.db')
+    c = conn.cursor()
+    pnl = (current_price - avg_price) * quantity
+    c.execute('''
+        INSERT OR REPLACE INTO portfolio (figi, name, quantity, avg_price, current_price, pnl)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (figi, name, quantity, avg_price, current_price, pnl))
+    conn.commit()
+    conn.close()
+
+def get_total_pnl():
+    conn = sqlite3.connect('trading.db')
+    c = conn.cursor()
+    c.execute("SELECT COALESCE(SUM(pnl), 0) FROM portfolio")
+    pnl = c.fetchone()[0]
+    conn.close()
+    return float(pnl)
+
+def log_performance(current_balance):
+    conn = sqlite3.connect('trading.db')
+    c = conn.cursor()
+    c.execute("SELECT MAX(peak_balance) FROM performance")
+    res = c.fetchone()[0]
+    peak = res if res else 1_000_000
+    peak = max(peak, current_balance)
+    drawdown = (peak - current_balance) / peak
+    c.execute('''
+        INSERT INTO performance (timestamp, balance, peak_balance, drawdown)
+        VALUES (?, ?, ?, ?)
+    ''', (datetime.now().isoformat(), current_balance, peak, drawdown))
+    conn.commit()
+    conn.close()
+    return drawdown 
+"""
+
+def init_db():
+    conn = sqlite3.connect('monitor.db')
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS price_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            figi TEXT,
+            name TEXT,
+            price REAL,
+            change_1m REAL,
+            change_10m REAL,
+            change_30m REAL,
+            change_1h REAL,
+            change_12h REAL,
+            change_1d REAL
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+def save_price_data(figi, name, price, changes):
+    conn = sqlite3.connect('monitor.db')
+    c = conn.cursor()
+    c.execute('''
+        INSERT INTO price_history 
+        (timestamp, figi, name, price, change_1m, change_10m, change_30m, change_1h, change_12h, change_1d)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        datetime.now().isoformat(),
+        figi,
+        name,
+        price,
+        changes.get('1m', 0),
+        changes.get('10m', 0),
+        changes.get('30m', 0),
+        changes.get('1h', 0),
+        changes.get('12h', 0),
+        changes.get('1d', 0)
+    ))
+    conn.commit()
+    conn.close()
+
+
+# === FILE: data_collector.py ===
+import asyncio
+from datetime import datetime, timedelta, timezone
+from t_tech.invest import AsyncClient
+from config import TINKOFF_TOKEN, FIGI_LIST, TIMEFRAMES
+
+def quote_to_float(q):
+    return q.units + q.nano / 1e9
+
+async def get_instrument_name(client, figi):
+    try:
+        info = await client.instruments.get_instrument_by(id_type=2, id=figi)
+        return info.instrument.name
+    except:
+        return "Unknown"
+
+async def get_price_changes(client, figi):
+    """
+    Возвращает текущую цену и изменения за заданные таймфреймы
+    """
+    now = datetime.now(timezone.utc)
+    changes = {}
+    current_price = None
+
+    # Получим данные за последний день (макс. интервал)
+    from_time = now - timedelta(days=1)
+    candles = await client.market_data.get_candles(
+        figi=figi,
+        from_=from_time,
+        to=now,
+        interval=1  # 1-минутные свечи
+    )
+
+    if not candles.candles:
+        return None, None, {}
+
+    # Текущая цена — последняя закрытая свеча
+    current_price = quote_to_float(candles.candles[-1].close)
+
+    # Создадим словарь: timestamp -> цена закрытия
+    price_by_minute = {}
+    for c in candles.candles:
+        ts = c.time.replace(second=0, microsecond=0)
+        price_by_minute[ts] = quote_to_float(c.close)
+
+    # Сортируем временные метки
+    timestamps = sorted(price_by_minute.keys())
+
+    # Для каждого таймфрейма найдём цену N минут назад
+    for label, minutes in TIMEFRAMES.items():
+        target_time = now.replace(second=0, microsecond=0) - timedelta(minutes=minutes)
+        # Найдём ближайшую цену <= target_time
+        price_ago = None
+        for ts in reversed(timestamps):
+            if ts <= target_time:
+                price_ago = price_by_minute[ts]
+                break
+        if price_ago:
+            change = (current_price - price_ago) / price_ago * 100
+            changes[label] = round(change, 2)
+        else:
+            changes[label] = 0.0
+
+    return current_price, changes
+
+async def get_daily_candles(client, figi, days=30):
+    """Получает дневные свечи за последние N дней"""
+    now = datetime.now(timezone.utc)
+    from_time = now - timedelta(days=days)
+    candles = await client.market_data.get_candles(
+        figi=figi,
+        from_=from_time,
+        to=now,
+        interval=4  # CandleInterval.CANDLE_INTERVAL_DAY = 4
+    )
+    prices = []
+    for c in candles.candles:
+        prices.append({
+            'timestamp': c.time.isoformat(),
+            'open': quote_to_float(c.open),
+            'high': quote_to_float(c.high),
+            'low': quote_to_float(c.low),
+            'close': quote_to_float(c.close),
+            'volume': c.volume
+        })
+    return prices
+
+async def collect_all_data():
+    from data_base import save_price_data
+    async with AsyncClient(TINKOFF_TOKEN) as client:
+        results = []
+        for figi in FIGI_LIST:
+            try:
+                name = await get_instrument_name(client, figi)
+                price, changes = await get_price_changes(client, figi)
+                if price is not None:
+                    save_price_data(figi, name, price, changes)
+                    results.append({
+                        'figi': figi,
+                        'name': name,
+                        'price': price,
+                        'changes': changes
+                    })
+            except Exception as e:
+                print(f"Ошибка для {figi}: {e}")
+        return results
+
+
+# === FILE: Init_db.py ===
+from data_base import init_db
+init_db()
+
+
+# === FILE: ml.py ===
+# ml.py
+import pandas as pd
+import numpy as np
+import lightgbm as lgb
+
+
+def prepare_features(df):
+    df = df.copy()
+    df['return'] = df['close'].pct_change()
+    df['volatility'] = df['return'].rolling(5).std()
+    df['ma5'] = df['close'].rolling(5).mean()
+    df['ma20'] = df['close'].rolling(20).mean()
+    df['ma_ratio'] = df['ma5'] / df['ma20']
+    df['volume_ma'] = df['volume'].rolling(5).mean()
+    df['volume_ratio'] = df['volume'] / df['volume_ma']
+    df['high_low'] = (df['high'] - df['low']) / df['close']
+    df['next_return'] = df['return'].shift(-1)
+    df['target'] = (df['next_return'] > 0).astype(int)
+    return df.dropna()
+
+
+def train_model(candles):
+    df = pd.DataFrame([{
+        'open': c.open.units + c.open.nano / 1e9,
+        'high': c.high.units + c.high.nano / 1e9,
+        'low': c.low.units + c.low.nano / 1e9,
+        'close': c.close.units + c.close.nano / 1e9,
+        'volume': c.volume
+    } for c in candles])
+
+    df = prepare_features(df)
+    if len(df) < 10:
+        raise ValueError("Недостаточно данных для обучения")
+
+    features = ['return', 'volatility', 'ma_ratio', 'volume_ratio', 'high_low']
+    X = df[features]
+    y = df['target']
+
+    model = lgb.LGBMClassifier(n_estimators=30, random_state=42, verbose=-1)
+    model.fit(X, y)
+    return model, features
+
+
+def predict(model, features, X_row):
+    prob = model.predict_proba([X_row])[0, 1]
+    return prob
+
+
+# === FILE: risk_manager.py ===
+# risk_manager.py
+from config import (
+    MAX_RISK_PER_TRADE,
+    MAX_RISK_PER_ASSET,
+    MAX_TOTAL_PORTFOLIO_RISK,
+    MAX_DRAWDOWN,
+    INITIAL_CAPITAL
+)
+from data_base import get_total_pnl, log_performance
+
+class PortfolioRiskManager:
+    def __init__(self):
+        self.current_balance = INITIAL_CAPITAL
+        self.active_risk = 0.0
+        self.asset_risk = {}
+
+    def update_balance(self):
+        pnl = get_total_pnl()
+        self.current_balance = INITIAL_CAPITAL + pnl
+        drawdown = log_performance(self.current_balance)
+        if drawdown > MAX_DRAWDOWN:
+            raise Exception("🛑 Максимальная просадка превышена! Торговля остановлена.")
+
+    def can_add_position(self, figi, position_risk):
+        if position_risk > MAX_RISK_PER_TRADE * self.current_balance:
+            return False
+        current_asset_risk = self.asset_risk.get(figi, 0)
+        if (current_asset_risk + position_risk) > MAX_RISK_PER_ASSET * self.current_balance:
+            return False
+        if (self.active_risk + position_risk) > MAX_TOTAL_PORTFOLIO_RISK * self.current_balance:
+            return False
+        return True
+
+    def commit_risk(self, figi, risk):
+        self.active_risk += risk
+        self.asset_risk[figi] = self.asset_risk.get(figi, 0) + risk
+
+    def reduce_risk(self, figi, risk):
+        self.active_risk = max(0, self.active_risk - risk)
+        self.asset_risk[figi] = max(0, self.asset_risk.get(figi, 0) - risk)
+
+
+# === FILE: run_bot.py ===
+# run_bot.py
+import asyncio
+from data_base import init_db
+from trading_engine import run_trading_cycle
+
+init_db()
+
+async def main():
+    while True:
+        try:
+            await run_trading_cycle()
+        except Exception as e:
+            print(f"Ошибка в основном цикле: {e}")
+        await asyncio.sleep(60)  # раз в минуту
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
+
+# === FILE: telegram_bot.py ===
+# telegram_bot.py
+import asyncio
+from telegram.ext import Application
+
+async def send_telegram_message(message):
+    from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+    try:
+        app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+        await app.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
+    except Exception as e:
+        print(f"Ошибка отправки Telegram: {e}")
+
+
+# === FILE: trading_engine.py ===
+# trading_engine.py
+import asyncio
+import pandas as pd
+from datetime import datetime, timedelta, timezone
+from t_tech.invest import AsyncClient, OrderDirection, OrderType, CandleInterval
+from config import FIGI_LIST, TINKOFF_TOKEN, ACCOUNT_ID
+from ml import train_model, prepare_features, predict
+from risk_manager import PortfolioRiskManager
+from telegram_bot import send_telegram_message
+from data_base import save_signal, save_operation, update_portfolio
+
+risk_manager = PortfolioRiskManager()
+
+def quote_to_float(q):
+    return q.units + q.nano / 1e9
+
+async def analyze_figis(client):
+    signals = []
+    for figi in FIGI_LIST:
+        try:
+            # Получаем 60 минут свечей (1-минутные)
+            to_time = datetime.now(timezone.utc)
+            from_time = to_time - timedelta(minutes=60)
+            candles = await client.market_data.get_candles(
+                figi=figi,
+                from_=from_time,
+                to=to_time,
+                interval=CandleInterval.CANDLE_INTERVAL_1_MIN
+            )
+            if len(candles.candles) < 10:
+                continue
+
+            model, features = train_model(candles.candles)
+            last = candles.candles[-1]
+            df = prepare_features(pd.DataFrame([{
+                'open': quote_to_float(last.open),
+                'high': quote_to_float(last.high),
+                'low': quote_to_float(last.low),
+                'close': quote_to_float(last.close),
+                'volume': last.volume
+            }]))
+            if df.empty or len(df) == 0:
+                continue
+
+            X_row = df[features].iloc[-1].tolist()
+            prob = predict(model, features, X_row)
+            price = df['close'].iloc[-1]
+            atr = df['volatility'].iloc[-1] * price
+            risk_per_lot = atr * 1.5  # 1.5 * ATR как стоп
+
+            if prob > 0.55:
+                signals.append({
+                    'figi': figi,
+                    'price': price,
+                    'prob': prob,
+                    'risk': risk_per_lot,
+                    'tp': price * 1.02,
+                    'sl': price * 0.985
+                })
+        except Exception as e:
+            await send_telegram_message(f"Ошибка анализа {figi}: {str(e)}")
+    return signals
+
+async def execute_signals(client, signals):
+    for sig in signals:
+        try:
+            if not risk_manager.can_add_position(sig['figi'], sig['risk']):
+                continue
+
+            # 1 лот
+            quantity = 1
+            order = await client.orders.post_order(
+                figi=sig['figi'],
+                quantity=quantity,
+                direction=OrderDirection.ORDER_DIRECTION_BUY,
+                order_type=OrderType.ORDER_TYPE_MARKET,
+                account_id=ACCOUNT_ID
+            )
+
+            save_signal({
+                'figi': sig['figi'],
+                'price': sig['price'],
+                'signal': 'BUY',
+                'prob': sig['prob'],
+                'position_size': quantity,
+                'tp': sig['tp'],
+                'sl': sig['sl']
+            })
+            save_operation({
+                'id': order.order_id,
+                'timestamp': datetime.now().isoformat(),
+                'figi': sig['figi'],
+                'operation_type': 'BUY',
+                'price': sig['price'],
+                'quantity': quantity,
+                'status': 'executed'
+            })
+
+            risk_manager.commit_risk(sig['figi'], sig['risk'])
+            await send_telegram_message(
+                f"🟢 СИГНАЛ: {sig['figi']}\n"
+                f"Цена: {sig['price']:.0f} | Вероятность: {sig['prob']:.2f}\n"
+                f"SL: {sig['sl']:.0f}, TP: {sig['tp']:.0f}"
+            )
+        except Exception as e:
+            await send_telegram_message(f"❌ Ошибка ордера {sig['figi']}: {str(e)}")
+
+async def portfolio_monitor(client):
+    try:
+        portfolio = await client.operations.get_portfolio(account_id=ACCOUNT_ID)
+        for pos in portfolio.positions:
+            figi = pos.figi
+            quantity = pos.quantity.units
+            avg_price = quote_to_float(pos.average_position_price)
+            current_price = quote_to_float(pos.current_price) if pos.current_price else avg_price
+            name = "Unknown"
+            try:
+                instr = await client.instruments.get_instrument_by(id_type=2, id=figi)
+                name = instr.instrument.name
+            except:
+                pass
+            update_portfolio(figi, name, quantity, avg_price, current_price)
+    except Exception as e:
+        await send_telegram_message(f"Ошибка обновления портфеля: {str(e)}")
+
+async def run_trading_cycle():
+    try:
+        async with AsyncClient(TINKOFF_TOKEN) as client:
+            risk_manager.update_balance()
+            signals = await analyze_figis(client)
+            if signals:
+                await execute_signals(client, signals)
+            await portfolio_monitor(client)
+    except Exception as e:
+        await send_telegram_message(f"Критическая ошибка цикла: {str(e)}")

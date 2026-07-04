@@ -1,0 +1,127 @@
+<html>
+    <head>
+        <meta charset="utf-8">
+        
+            <script src="lib/bindings/utils.js"></script>
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/dist/vis-network.min.css" integrity="sha512-WgxfT5LWjfszlPHXRmBWHkV2eceiWTOBvrKCNbdgDYTHrT2AeLCGbF4sZlZw3UMN3WtL0tGUoIAKsu8mllg/XA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/vis-network.min.js" integrity="sha512-LnvoEWDFrqGHlHmDD2101OrLcbsfkrzoSpvtSQtxK3RMnRV0eOkhhBN2dXHKRrUU8p2DGRTk35n4O8nWSVe1mQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+            
+        
+<center>
+<h1></h1>
+</center>
+
+<!-- <link rel="stylesheet" href="../node_modules/vis/dist/vis.min.css" type="text/css" />
+<script type="text/javascript" src="../node_modules/vis/dist/vis.js"> </script>-->
+        <link
+          href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta3/dist/css/bootstrap.min.css"
+          rel="stylesheet"
+          integrity="sha384-eOJMYsd53ii+scO/bJGFsiCZc+5NDVN2yr8+0RDqr0Ql0h+rP48ckxlpbzKgwra6"
+          crossorigin="anonymous"
+        />
+        <script
+          src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta3/dist/js/bootstrap.bundle.min.js"
+          integrity="sha384-JEW9xMcG8R+pH31jmWH6WWP0WintQrMb4s7ZOdauHnUtxwoG2vI5DkLtS3qm9Ekf"
+          crossorigin="anonymous"
+        ></script>
+
+
+        <center>
+          <h1></h1>
+        </center>
+        <style type="text/css">
+
+             #mynetwork {
+                 width: 100%;
+                 height: 500px;
+                 background-color: #ffffff;
+                 border: 1px solid lightgray;
+                 position: relative;
+                 float: left;
+             }
+
+             
+
+             
+
+             
+        </style>
+    </head>
+
+
+    <body>
+        <div class="card" style="width: 100%">
+            
+            
+            <div id="mynetwork" class="card-body"></div>
+        </div>
+
+        
+        
+
+        <script type="text/javascript">
+
+              // initialize global variables.
+              var edges;
+              var nodes;
+              var allNodes;
+              var allEdges;
+              var nodeColors;
+              var originalNodes;
+              var network;
+              var container;
+              var options, data;
+              var filter = {
+                  item : '',
+                  property : '',
+                  value : []
+              };
+
+              
+
+              
+
+              // This method is responsible for drawing the graph, returns the drawn network
+              function drawGraph() {
+                  var container = document.getElementById('mynetwork');
+
+                  
+
+                  // parsing and collecting nodes and edges from the python
+                  nodes = new vis.DataSet([{"color": "#97c2fc", "id": "data_collector.py ===:collect_all_data", "label": "data_collector.py ===:collect_all_data", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "AsyncClient", "label": "AsyncClient", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "get_instrument_name", "label": "get_instrument_name", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "get_price_changes", "label": "get_price_changes", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "save_price_data", "label": "save_price_data", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "print", "label": "print", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "trading_engine.py ===:run_trading_cycle", "label": "trading_engine.py ===:run_trading_cycle", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "analyze_figis", "label": "analyze_figis", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "portfolio_monitor", "label": "portfolio_monitor", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "send_telegram_message", "label": "send_telegram_message", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "execute_signals", "label": "execute_signals", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "str", "label": "str", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "trading_engine.py ===:analyze_figis", "label": "trading_engine.py ===:analyze_figis", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "train_model", "label": "train_model", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "prepare_features", "label": "prepare_features", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "predict", "label": "predict", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "timedelta", "label": "timedelta", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "len", "label": "len", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "quote_to_float", "label": "quote_to_float", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "telegram_bot.py ===:send_telegram_message", "label": "telegram_bot.py ===:send_telegram_message", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "app.py ===:fetch_candles", "label": "app.py ===:fetch_candles", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "timezone", "label": "timezone", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "data_collector.py ===:get_daily_candles", "label": "data_collector.py ===:get_daily_candles", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "risk_manager.py ===:update_balance", "label": "risk_manager.py ===:update_balance", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "get_total_pnl", "label": "get_total_pnl", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "log_performance", "label": "log_performance", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "Exception", "label": "Exception", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "ml.py ===:train_model", "label": "ml.py ===:train_model", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "ValueError", "label": "ValueError", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "run_bot.py ===:main", "label": "run_bot.py ===:main", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "run_trading_cycle", "label": "run_trading_cycle", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "risk_manager.py ===:reduce_risk", "label": "risk_manager.py ===:reduce_risk", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "max", "label": "max", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "trading_engine.py ===:execute_signals", "label": "trading_engine.py ===:execute_signals", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "save_signal", "label": "save_signal", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "save_operation", "label": "save_operation", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "data_collector.py ===:get_price_changes", "label": "data_collector.py ===:get_price_changes", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "sorted", "label": "sorted", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "reversed", "label": "reversed", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "round", "label": "round", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "app.py ===:fetch_current_price", "label": "app.py ===:fetch_current_price", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "trading_engine.py ===:portfolio_monitor", "label": "trading_engine.py ===:portfolio_monitor", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "update_portfolio", "label": "update_portfolio", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "app.py ===:update_graph_and_price", "label": "app.py ===:update_graph_and_price", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "Output", "label": "Output", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "Input", "label": "Input", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "fetch_candles", "label": "fetch_candles", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "fetch_current_price", "label": "fetch_current_price", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "dict", "label": "dict", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "data_collector.py ===:get_instrument_name", "label": "data_collector.py ===:get_instrument_name", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "risk_manager.py ===:commit_risk", "label": "risk_manager.py ===:commit_risk", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "ml.py ===:prepare_features", "label": "ml.py ===:prepare_features", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "ml.py ===:predict", "label": "ml.py ===:predict", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "backtest.py ===:simple_backtest", "label": "backtest.py ===:simple_backtest", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "trading_engine.py ===:quote_to_float", "label": "trading_engine.py ===:quote_to_float", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "data_base.py ===:save_price_data", "label": "data_base.py ===:save_price_data", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "data_collector.py ===:quote_to_float", "label": "data_collector.py ===:quote_to_float", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "risk_manager.py ===:can_add_position", "label": "risk_manager.py ===:can_add_position", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "data_base.py ===:init_db", "label": "data_base.py ===:init_db", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "app.py ===:quote_to_float", "label": "app.py ===:quote_to_float", "shape": "dot", "size": 10}, {"color": "#97c2fc", "id": "risk_manager.py ===:__init__", "label": "risk_manager.py ===:__init__", "shape": "dot", "size": 10}]);
+                  edges = new vis.DataSet([{"arrows": "to", "from": "data_collector.py ===:collect_all_data", "to": "AsyncClient", "width": 1}, {"arrows": "to", "from": "data_collector.py ===:collect_all_data", "to": "get_instrument_name", "width": 1}, {"arrows": "to", "from": "data_collector.py ===:collect_all_data", "to": "get_price_changes", "width": 1}, {"arrows": "to", "from": "data_collector.py ===:collect_all_data", "to": "save_price_data", "width": 1}, {"arrows": "to", "from": "data_collector.py ===:collect_all_data", "to": "print", "width": 1}, {"arrows": "to", "from": "trading_engine.py ===:run_trading_cycle", "to": "AsyncClient", "width": 1}, {"arrows": "to", "from": "trading_engine.py ===:run_trading_cycle", "to": "analyze_figis", "width": 1}, {"arrows": "to", "from": "trading_engine.py ===:run_trading_cycle", "to": "portfolio_monitor", "width": 1}, {"arrows": "to", "from": "trading_engine.py ===:run_trading_cycle", "to": "send_telegram_message", "width": 1}, {"arrows": "to", "from": "trading_engine.py ===:run_trading_cycle", "to": "execute_signals", "width": 1}, {"arrows": "to", "from": "trading_engine.py ===:run_trading_cycle", "to": "str", "width": 1}, {"arrows": "to", "from": "trading_engine.py ===:analyze_figis", "to": "train_model", "width": 1}, {"arrows": "to", "from": "trading_engine.py ===:analyze_figis", "to": "prepare_features", "width": 1}, {"arrows": "to", "from": "trading_engine.py ===:analyze_figis", "to": "predict", "width": 1}, {"arrows": "to", "from": "trading_engine.py ===:analyze_figis", "to": "timedelta", "width": 1}, {"arrows": "to", "from": "trading_engine.py ===:analyze_figis", "to": "len", "width": 1}, {"arrows": "to", "from": "trading_engine.py ===:analyze_figis", "to": "send_telegram_message", "width": 1}, {"arrows": "to", "from": "trading_engine.py ===:analyze_figis", "to": "quote_to_float", "width": 1}, {"arrows": "to", "from": "trading_engine.py ===:analyze_figis", "to": "str", "width": 1}, {"arrows": "to", "from": "telegram_bot.py ===:send_telegram_message", "to": "print", "width": 1}, {"arrows": "to", "from": "app.py ===:fetch_candles", "to": "AsyncClient", "width": 1}, {"arrows": "to", "from": "app.py ===:fetch_candles", "to": "timezone", "width": 1}, {"arrows": "to", "from": "app.py ===:fetch_candles", "to": "timedelta", "width": 1}, {"arrows": "to", "from": "app.py ===:fetch_candles", "to": "quote_to_float", "width": 1}, {"arrows": "to", "from": "data_collector.py ===:get_daily_candles", "to": "timedelta", "width": 1}, {"arrows": "to", "from": "data_collector.py ===:get_daily_candles", "to": "quote_to_float", "width": 1}, {"arrows": "to", "from": "risk_manager.py ===:update_balance", "to": "get_total_pnl", "width": 1}, {"arrows": "to", "from": "risk_manager.py ===:update_balance", "to": "log_performance", "width": 1}, {"arrows": "to", "from": "risk_manager.py ===:update_balance", "to": "Exception", "width": 1}, {"arrows": "to", "from": "ml.py ===:train_model", "to": "prepare_features", "width": 1}, {"arrows": "to", "from": "ml.py ===:train_model", "to": "len", "width": 1}, {"arrows": "to", "from": "ml.py ===:train_model", "to": "ValueError", "width": 1}, {"arrows": "to", "from": "run_bot.py ===:main", "to": "run_trading_cycle", "width": 1}, {"arrows": "to", "from": "run_bot.py ===:main", "to": "print", "width": 1}, {"arrows": "to", "from": "risk_manager.py ===:reduce_risk", "to": "max", "width": 1}, {"arrows": "to", "from": "trading_engine.py ===:execute_signals", "to": "save_signal", "width": 1}, {"arrows": "to", "from": "trading_engine.py ===:execute_signals", "to": "save_operation", "width": 1}, {"arrows": "to", "from": "trading_engine.py ===:execute_signals", "to": "send_telegram_message", "width": 1}, {"arrows": "to", "from": "trading_engine.py ===:execute_signals", "to": "str", "width": 1}, {"arrows": "to", "from": "data_collector.py ===:get_price_changes", "to": "quote_to_float", "width": 1}, {"arrows": "to", "from": "data_collector.py ===:get_price_changes", "to": "sorted", "width": 1}, {"arrows": "to", "from": "data_collector.py ===:get_price_changes", "to": "timedelta", "width": 1}, {"arrows": "to", "from": "data_collector.py ===:get_price_changes", "to": "reversed", "width": 1}, {"arrows": "to", "from": "data_collector.py ===:get_price_changes", "to": "round", "width": 1}, {"arrows": "to", "from": "app.py ===:fetch_current_price", "to": "AsyncClient", "width": 1}, {"arrows": "to", "from": "app.py ===:fetch_current_price", "to": "timezone", "width": 1}, {"arrows": "to", "from": "app.py ===:fetch_current_price", "to": "timedelta", "width": 1}, {"arrows": "to", "from": "app.py ===:fetch_current_price", "to": "quote_to_float", "width": 1}, {"arrows": "to", "from": "trading_engine.py ===:portfolio_monitor", "to": "quote_to_float", "width": 1}, {"arrows": "to", "from": "trading_engine.py ===:portfolio_monitor", "to": "update_portfolio", "width": 1}, {"arrows": "to", "from": "trading_engine.py ===:portfolio_monitor", "to": "send_telegram_message", "width": 1}, {"arrows": "to", "from": "trading_engine.py ===:portfolio_monitor", "to": "str", "width": 1}, {"arrows": "to", "from": "app.py ===:update_graph_and_price", "to": "timezone", "width": 1}, {"arrows": "to", "from": "app.py ===:update_graph_and_price", "to": "Output", "width": 1}, {"arrows": "to", "from": "app.py ===:update_graph_and_price", "to": "Input", "width": 1}, {"arrows": "to", "from": "app.py ===:update_graph_and_price", "to": "fetch_candles", "width": 1}, {"arrows": "to", "from": "app.py ===:update_graph_and_price", "to": "fetch_current_price", "width": 1}, {"arrows": "to", "from": "app.py ===:update_graph_and_price", "to": "timedelta", "width": 1}, {"arrows": "to", "from": "app.py ===:update_graph_and_price", "to": "dict", "width": 1}]);
+
+                  nodeColors = {};
+                  allNodes = nodes.get({ returnType: "Object" });
+                  for (nodeId in allNodes) {
+                    nodeColors[nodeId] = allNodes[nodeId].color;
+                  }
+                  allEdges = edges.get({ returnType: "Object" });
+                  // adding nodes and edges to the graph
+                  data = {nodes: nodes, edges: edges};
+
+                  var options = {"physics": {"enabled": false}, "interaction": {"hover": true, "tooltipDelay": 200}};
+
+                  
+
+
+                  
+
+                  network = new vis.Network(container, data, options);
+
+                  
+
+                  
+
+                  
+
+
+                  
+
+                  return network;
+
+              }
+              drawGraph();
+        </script>
+    </body>
+</html>

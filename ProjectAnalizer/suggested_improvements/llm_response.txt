@@ -1,0 +1,146 @@
+### FILE: dash_app.py ```python
+"""
+import streamlit as st
+import sqlite3
+import pandas as pd
+
+st.set_page_config(page_title="Tinkoff Trading Dashboard", layout="wide")
+st.title("📊 Tinkoff Trading Dashboard")
+
+conn = sqlite3.connect('trading.db')
+
+# Сигналы
+st.subheader("Последние сигналы")
+signals = pd.read_sql("SELECT * FROM signals ORDER BY timestamp DESC LIMIT 20", conn)
+st.dataframe(signals)
+
+# Операции
+st.subheader("Последние операции")
+ops = pd.read_sql("SELECT * FROM operations ORDER BY timestamp DESC LIMIT 20", conn)
+st.dataframe(ops)
+
+# Портфель
+st.subheader("Портфель")
+portfolio = pd.read_sql("SELECT * FROM portfolio", conn)
+st.dataframe(portfolio)
+
+# Просадка
+st.subheader("История просадки")
+perf = pd.read_sql("SELECT * FROM performance ORDER BY timestamp", conn)
+if not perf.empty:
+    st.line_chart(perf.set_index('timestamp')[['drawdown']], height=300)
+    current_dd = perf['drawdown'].iloc[-1]
+    st.metric("Текущая просадка", f"{current_dd:.2%}")
+else:
+    st.info("Нет данных о просадке")
+"""
+
+import dash
+from dash import dcc, html, Input, Output
+import plotly.graph_objs as go
+import pandas as pd
+import asyncio
+from datetime import datetime, timedelta, timezone
+from t_tech.invest import AsyncClient, CandleInterval
+from config import TINKOFF_TOKEN, FIGI_LIST
+
+app = dash.Dash(__name__)
+app.title = "Tinkoff Market Monitor"
+
+# Сопоставление таймфреймов с интервалами Tinkoff
+TIMEFRAME_MAP = {
+    "1м": CandleInterval.CANDLE_INTERVAL_1_MIN,
+    "5м": CandleInterval.CANDLE_INTERVAL_5_MIN,
+    "30м": CandleInterval.CANDLE_INTERVAL_30_MIN,
+    "1ч": CandleInterval.CANDLE_INTERVAL_HOUR,
+    "4ч": CandleInterval.CANDLE_INTERVAL_4_HOUR,
+    "12ч": CandleInterval.CANDLE_INTERVAL_4_HOUR,  # Исправлено: 12ч теперь использует 4ч
+    "1д": CandleInterval.CANDLE_INTERVAL_DAY,
+    "1н": CandleInterval.CANDLE_INTERVAL_WEEK,
+    "1М": CandleInterval.CANDLE_INTERVAL_MONTH,
+}
+
+# Макс. периоды (в днях) для каждого таймфрейма
+MAX_PERIOD_DAYS = {
+    "1м": 1,
+    "5м": 7,
+    "30м": 30,
+    "1ч": 60,
+    "4ч": 180,
+    "12ч": 180,
+    "1д": 365,
+    "1н": 730,
+    "1М": 1825,
+}
+
+
+def quote_to_float(q):
+    return q.units + q.nano / 1e9
+
+
+async def fetch_candles(figi, timeframe, days):
+    interval = TIMEFRAME_MAP[timeframe]
+    async with AsyncClient(TINKOFF_TOKEN) as client:
+        moscow_tz = timezone(timedelta(hours=3))
+        now = datetime.now(moscow_tz)
+        from_time = now - timedelta(days=days)
+        candles = await client.market_data.get_candles(
+            figi=figi,
+            from_=from_time,
+            to=now,
+            interval=interval
+        )
+        data = []
+        for c in candles.candles:
+            data.append({
+                'time': c.time,
+                'close': quote_to_float(c.close),
+                'high': quote_to_float(c.high),
+                'low': quote_to_float(c.low),
+                'open': quote_to_float(c.open),
+                'volume': c.volume
+            })
+        return pd.DataFrame(data)
+
+
+async def fetch_current_price(figi):
+    async with AsyncClient(TINKOFF_TOKEN) as client:
+        moscow_tz = timezone(timedelta(hours=3))
+        now = datetime.now(moscow_tz)
+        candles = await client.market_data.get_candles(
+            figi=figi,
+            from_=now - timedelta(minutes=2),
+            to=now,
+            interval=CandleInterval.CANDLE_INTERVAL_1_MIN
+        )
+        return quote_to_float(candles.candles[-1].close) if candles.candles else None
+
+
+# === LAYOUT ===
+app.layout = html.Div(
+    style={
+        'fontFamily': '"Segoe UI", sans-serif',
+        'padding': '20px',
+        'backgroundColor': '#f9f9f9'
+    },
+    children=[
+        html.H1("📈 Tinkoff Market Monitor", style={'textAlign': 'center', 'marginBottom': '20px'}),
+
+        html.Div([
+            html.Div([
+                html.Label("Актив:", style={'fontWeight': 'bold'}),
+                dcc.Dropdown(
+                    id='figi-selector',
+                    options=[{'label': figi, 'value': figi} for figi in FIGI_LIST],
+                    value=FIGI_LIST[0] if FIGI_LIST else "",
+                    clearable=False,
+                    style={'width': '100%'}
+                )
+            ], style={'width': '45%', 'display': 'inline-block'}),
+
+            html.Div([
+                html.Label("Таймфрейм:", style={'fontWeight': 'bold'}),
+                dcc.Dropdown(
+                    id='timeframe-selector',
+                    options=[
+                        {"label": "1 минута", "value
